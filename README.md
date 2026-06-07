@@ -59,9 +59,34 @@ Run it for real:
 ./update-compose-stacks.sh
 ```
 
+### Permissions
+
+The script talks to the Docker daemon socket (`/var/run/docker.sock`), which is owned by `root:docker`. So it needs to run as root or as a user in the `docker` group, otherwise Docker reports that it cannot connect to the API. There are two ways to handle this:
+
+1. **Run it with `sudo`** (or schedule it in root's crontab, where no `sudo` is needed). Simplest option, and the most reliable on NAS distributions (Synology, QNAP, Unraid) that do not set up a standard `docker` group.
+
+   ```bash
+   sudo ./update-compose-stacks.sh
+   ```
+
+2. **Add your user to the `docker` group** so it runs without `sudo`:
+
+   ```bash
+   sudo usermod -aG docker $USER
+   # log out and back in (or run: newgrp docker) for it to take effect
+   ```
+
+   Note: membership in the `docker` group is effectively root access on the host (a container can mount the host filesystem), so prefer this only on a trusted single-user machine.
+
 ### Scheduling
 
-To run it automatically, add a cron entry on the host (this example runs every day at 4am):
+Schedule it in **root's** crontab so it runs with the right permissions and no `sudo` prompt:
+
+```bash
+sudo crontab -e
+```
+
+Then add an entry (this example runs every day at 4am and logs the output):
 
 ```cron
 0 4 * * * /path/to/capybara/update-compose-stacks.sh >> /var/log/capybara.log 2>&1
