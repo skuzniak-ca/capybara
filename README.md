@@ -8,18 +8,18 @@ The name fits the job: a capybara is the calm, low-maintenance animal that keeps
 
 1. **Discover** every Compose project on the host by reading the `com.docker.compose.project` labels Docker already attaches to your containers (no project list to maintain).
 2. **Pull** each project's images. A pull only downloads layers when something actually changed, so this doubles as the update check.
-3. **Compare** each service's image ID from before and after the pull. If nothing changed, the project is left running untouched.
-4. **Recreate** only the projects with a new image: `docker compose down` followed by `docker compose up -d`.
+3. **Compare** each *running* container's image against the latest image the compose file now resolves to. Projects with no running containers are skipped, so a stack you have deliberately stopped stays stopped.
+4. **Recreate** only the projects whose running image is out of date: `docker compose down` followed by `docker compose up -d`.
 5. **Prune** the now-dangling old images once, at the very end, and only if at least one project was updated.
 
-Run it with `--dry-run` first to see what would update without changing anything.
+Run it with `--dry-run` first to see what would update without recreating or pruning anything.
 
 ## Features
 
 - **No dependencies** - just Docker with the Compose v2 plugin and a standard shell. No `jq`, no Python, nothing to install.
 - **Self-discovering** - finds projects from Docker's own container labels, so there is no config file or hardcoded list to keep in sync.
-- **Minimal disruption** - only projects with an actual image change are restarted; everything else keeps running.
-- **Safe to dry-run** - `--dry-run` reports available updates and performs no pulls-to-disk side effects, recreations, or prunes.
+- **Minimal disruption** - only running projects with an actual image change are restarted; everything else keeps running, and stacks you have stopped are left stopped.
+- **Safe to dry-run** - `--dry-run` reports which projects have updates available without recreating any stacks or pruning images. It still pulls images (that is how it checks for updates), but because the check compares against the *running* containers, a later real run correctly recreates the affected projects.
 - **Self-cleaning** - prunes dangling images at the end, but only when something was updated.
 
 ## Tech Stack
@@ -47,7 +47,7 @@ chmod +x update-compose-stacks.sh
 
 ## Usage
 
-Preview what would change without touching anything:
+Preview which projects have updates available (pulls images, but recreates nothing):
 
 ```bash
 ./update-compose-stacks.sh --dry-run

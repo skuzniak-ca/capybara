@@ -51,19 +51,43 @@ for entry in "${PROJECTS[@]}"; do
   log "Checking project '$name' ($config)"
   pushd "$dir" >/dev/null
 
-  # Snapshot the image IDs this project uses (missing image => "absent:<name>").
-  snapshot() {
+  # Image IDs the project's RUNNING containers are using. Stopped containers are
+  # ignored on purpose: a stack you have deliberately stopped should stay stopped.
+  running_images() {
+    docker compose -f "$config" ps -q 2>/dev/null | while read -r cid; do
+      [[ -z "$cid" ]] && continue
+      docker inspect --format '{{.Image}}' "$cid" 2>/dev/null
+    done | sort -u
+  }
+  # Image IDs the compose file resolves to (after a pull, the latest available).
+  # Missing image => "absent:<name>" so a never-pulled image counts as a change.
+  resolved_images() {
     while read -r img; do
       [[ -z "$img" ]] && continue
       docker image inspect --format '{{.Id}}' "$img" 2>/dev/null || echo "absent:$img"
-    done < <(docker compose -f "$config" config --images)
+    done < <(docker compose -f "$config" config --images) | sort -u
   }
 
-  before="$(snapshot)"
-  docker compose -f "$config" pull
-  after="$(snapshot)"
+  running="$(running_images)"
+  if [[ -z "$running" ]]; then
+    ok "  not running - left stopped"
+    popd >/dev/null
+    continue
+  fi
 
-  if [[ "$before" == "$after" ]]; then
+  docker compose -f "$config" pull
+  resolved="$(resolved_images)"
+
+  # A running container is out of date when its image is not among the latest
+  # resolved images. Comparing the running containers (not a pre-pull snapshot)
+  # means a prior --dry-run that already pulled the new image won't fool us.
+  outdated=0
+  while read -r img; do
+    [[ -z "$img" ]] && continue
+    grep -qxF "$img" <<<"$resolved" || { outdated=1; break; }
+  done <<<"$running"
+
+  if [[ $outdated -eq 0 ]]; then
     ok "  up to date"
   elif [[ $DRY_RUN -eq 1 ]]; then
     warn "  update available (dry-run, not applied)"
